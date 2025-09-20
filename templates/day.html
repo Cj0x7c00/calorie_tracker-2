@@ -1,0 +1,179 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+  <h2 class="mb-0">Entries for {{ day.isoformat() }}</h2>
+  <div class="btn-group">
+    {% if prev_day is defined and next_day is defined %}
+      <a class="btn btn-outline-primary" href="{{ url_for('day_view', datestr=prev_day.isoformat()) }}">← Prev</a>
+      <a class="btn btn-outline-primary" href="{{ url_for('day_view', datestr=next_day.isoformat()) }}">Next →</a>
+    {% endif %}
+    <a class="btn btn-primary" href="{{ url_for('today') }}">Today</a>
+  </div>
+</div>
+
+<div class="row g-3">
+  <div class="col-lg-7">
+    <div class="card">
+      <div class="card-body">
+        <h5 class="card-title">Add Entry</h5>
+        <form method="post" action="{{ url_for('add_entry') }}" class="row g-2">
+          <input type="hidden" name="when" value="{{ day.isoformat() }}">
+          <div class="col-md-4">
+            <input class="form-control" name="name" placeholder="Food name" required>
+          </div>
+          <div class="col-md-3">
+            <select class="form-select" name="meal">
+              <option value="">Meal...</option>
+              <option>Breakfast</option><option>Lunch</option><option>Dinner</option><option>Snack</option>
+            </select>
+          </div>
+          <div class="col-md-2">
+            <input class="form-control" type="number" step="0.1" name="quantity" placeholder="Qty (1)">
+          </div>
+          <div class="col-12"><small class="text-muted">Enter any of calories or macros (we'll calculate calories if left blank)</small></div>
+          <div class="col-md-3">
+            <input class="form-control" type="number" step="1" name="calories" placeholder="Calories">
+          </div>
+          <div class="col-md-3">
+            <input class="form-control" type="number" step="0.1" name="protein" placeholder="Protein (g)">
+          </div>
+          <div class="col-md-3">
+            <input class="form-control" type="number" step="0.1" name="carbs" placeholder="Carbs (g)">
+          </div>
+          <div class="col-md-3">
+            <input class="form-control" type="number" step="0.1" name="fat" placeholder="Fat (g)">
+          </div>
+          <div class="col-12">
+            <button class="btn btn-success">Add</button>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <div class="card mt-3">
+      <div class="card-body">
+        <h5 class="card-title">Logged Items</h5>
+        {% if entries %}
+          <div class="table-responsive">
+            <table class="table table-sm align-middle">
+              <thead>
+                <tr>
+                  <th>Food</th><th>Meal</th><th>Qty</th>
+                  <th class="text-end">Protein</th><th class="text-end">Carbs</th><th class="text-end">Fat</th>
+                  <th class="text-end">Calories</th><th></th>
+                </tr>
+              </thead>
+              <tbody>
+                {% for e in entries %}
+                {% set m = e.macros() %}
+                <tr>
+                  <td>{{ e.name }}</td>
+                  <td>{{ e.meal or "—" }}</td>
+                  <td>{{ e.quantity or 1 }}</td>
+                  <td class="text-end">{{ '%.1f'|format(m.protein) }}</td>
+                  <td class="text-end">{{ '%.1f'|format(m.carbs) }}</td>
+                  <td class="text-end">{{ '%.1f'|format(m.fat) }}</td>
+                  <td class="text-end">{{ e.computed_calories() }}</td>
+                  <td class="text-end">
+                    <form method="post" action="{{ url_for('delete_entry', entry_id=e.id) }}" onsubmit="return confirm('Delete this entry?')">
+                      <button class="btn btn-sm btn-outline-danger">Delete</button>
+                    </form>
+                  </td>
+                </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+        {% else %}
+          <p class="text-muted mb-0">No entries yet.</p>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+
+  <div class="col-lg-5">
+    <div class="card mb-3">
+      <div class="card-body">
+        <h5 class="card-title">Today's Total vs Target</h5>
+        <ul class="list-group">
+          <li class="list-group-item d-flex justify-content-between">
+            <span>Calories</span>
+            <span><strong>{{ totals.calories }}</strong> / {{ settings.cal_target }}</span>
+          </li>
+          <li class="list-group-item d-flex justify-content-between">
+            <span>Protein (g)</span>
+            <span><strong>{{ '%.1f'|format(totals.protein) }}</strong> / {{ '%.1f'|format(settings.protein_target) }}</span>
+          </li>
+          <li class="list-group-item d-flex justify-content-between">
+            <span>Carbs (g)</span>
+            <span><strong>{{ '%.1f'|format(totals.carbs) }}</strong> / {{ '%.1f'|format(settings.carb_target) }}</span>
+          </li>
+          <li class="list-group-item d-flex justify-content-between">
+            <span>Fat (g)</span>
+            <span><strong>{{ '%.1f'|format(totals.fat) }}</strong> / {{ '%.1f'|format(settings.fat_target) }}</span>
+          </li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="card mb-3">
+      <div class="card-body">
+        <h5 class="card-title">7-Day Intake</h5>
+        <div style="height:260px">
+          <canvas id="calChart" style="height:100%"></canvas>
+        </div>
+        <script>
+          const labels = {{ week_labels|tojson }};
+          const calories = {{ week_cals|tojson }};
+          const protein = {{ week_p|tojson }};
+          const carbs = {{ week_c|tojson }};
+          const fat = {{ week_f|tojson }};
+
+          const calCanvas = document.getElementById('calChart');
+          window._charts = window._charts || {};
+          if (window._charts.calChart) {
+            try { window._charts.calChart.destroy(); } catch (e) {}
+          }
+          window._charts.calChart = new Chart(calCanvas, {
+            type: 'line',
+            data: {
+              labels: labels,
+              datasets: [
+                { label: 'Calories', data: calories },
+                { label: 'Protein (g)', data: protein },
+                { label: 'Carbs (g)', data: carbs },
+                { label: 'Fat (g)', data: fat }
+              ]
+            },
+            options: { responsive: true, maintainAspectRatio: false }
+          });
+        </script>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-body">
+        <h5 class="card-title">Weight Trend</h5>
+        <div style="height:240px">
+          <canvas id="weightChart" style="height:100%"></canvas>
+        </div>
+        <script>
+          const wlabels = {{ weights|map(attribute='when')|map('isoformat')|list|tojson }};
+          const wvalues = {{ weights|map(attribute='weight')|list|tojson }};
+
+          const weightCanvas = document.getElementById('weightChart');
+          window._charts = window._charts || {};
+          if (window._charts.weightChart) {
+            try { window._charts.weightChart.destroy(); } catch (e) {}
+          }
+          window._charts.weightChart = new Chart(weightCanvas, {
+            type: 'line',
+            data: { labels: wlabels, datasets: [{ label: 'Weight', data: wvalues }] },
+            options: { responsive: true, maintainAspectRatio: false }
+          });
+        </script>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

@@ -1,0 +1,67 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="row g-3">
+  <div class="col-lg-6">
+    <div class="card">
+      <div class="card-body">
+        <h5 class="card-title">Log Weight</h5>
+        <form method="post" class="row g-2">
+          <div class="col-md-6">
+            <input class="form-control" type="date" name="when" value="">
+          </div>
+          <div class="col-md-6">
+            <input class="form-control" type="number" step="0.1" name="weight" placeholder="Weight (lbs)" required>
+          </div>
+          <div class="col-12">
+            <button class="btn btn-success">Add</button>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <div class="card mt-3">
+      <div class="card-body">
+        <h5 class="card-title">History</h5>
+        {% if weights %}
+          <ul class="list-group">
+            {% for w in weights|sort(attribute='when', reverse=True) %}
+              <li class="list-group-item d-flex justify-content-between">
+                <span>{{ w.when.isoformat() }}</span>
+                <strong>{{ '%.1f'|format(w.weight) }}</strong>
+              </li>
+            {% endfor %}
+          </ul>
+        {% else %}
+          <p class="text-muted mb-0">No weight logs yet.</p>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+
+  <div class="col-lg-6">
+    <div class="card">
+      <div class="card-body">
+        <h5 class="card-title">Chart</h5>
+        <div style="height:300px">
+          <canvas id="wchart" style="height:100%"></canvas>
+        </div>
+        <script>
+          const wlabs = {{ weights|map(attribute='when')|map('isoformat')|list|tojson }};
+          const wvals = {{ weights|map(attribute='weight')|list|tojson }};
+
+          const wctx2 = document.getElementById('wchart');
+          window._charts = window._charts || {};
+          if (window._charts.wchart) {
+            try { window._charts.wchart.destroy(); } catch (e) {}
+          }
+          window._charts.wchart = new Chart(wctx2, {
+            type: 'line',
+            data: { labels: wlabs, datasets: [{ label: 'Weight', data: wvals }] },
+            options: { responsive: true, maintainAspectRatio: false }
+          });
+        </script>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
